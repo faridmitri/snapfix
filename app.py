@@ -43,8 +43,8 @@ UPLOAD = Path("upload.jpg")
 
 if "last_run" not in st.session_state:
     st.session_state.last_run = ""
-if "run_details" not in st.session_state:
-    st.session_state.run_details = []
+if "run_failed" not in st.session_state:
+    st.session_state.run_failed = False
 if "chat" not in st.session_state:
     st.session_state.chat = []
 if "guide" not in st.session_state:
@@ -114,22 +114,6 @@ def clean_output(raw: str) -> str:
     return "\n".join(kept).strip()
 
 
-def status_lines(raw: str) -> list[str]:
-    """Engine status lines (highlighting, verify verdicts) with every
-    cost line removed - safe to show in the details expander."""
-    out = []
-    for l in raw.splitlines():
-        s = l.strip()
-        if not s or s.startswith("["):
-            continue
-        if s.startswith(("Highlighting:", "saved ", "No masks",
-                         "No highlighting", "Attempt ",
-                         "Showing the highlight", "Verification")) \
-                or "masks=" in s or s.startswith("verify "):
-            out.append(s)
-    return out
-
-
 def api_client() -> OpenAI:
     return OpenAI(
         base_url="https://api.meta.ai/v1",
@@ -194,9 +178,7 @@ if st.button("Diagnose", type="primary", disabled=media is None):
         )
     raw = result.stdout or result.stderr
     st.session_state.last_run = clean_output(raw)
-    st.session_state.run_details = status_lines(raw)
-    if not st.session_state.last_run and result.stderr:
-        st.session_state.run_details.append(result.stderr[-500:])
+    st.session_state.run_failed = not st.session_state.last_run
     st.session_state.chat = []
     st.session_state.guide = {}
     st.session_state.guide_attempted = False
@@ -214,11 +196,6 @@ if out:
     if RESULT.exists():
         st.image(str(RESULT), caption="Faulty part highlighted",
                  use_container_width=True)
-
-    if st.session_state.run_details:
-        with st.expander("Run details"):
-            for line in st.session_state.run_details:
-                st.text(line)
 
     # --- automatic brand / model identification ----------------------
     appliance = field(out, "APPLIANCE")
@@ -338,25 +315,36 @@ if out:
 
     st.subheader("💬 Ask SnapFix about this repair")
     for role, msg in st.session_state.chat:
-        st.markdown(f"**{'You' if role == 'user' else 'SnapFix'}:** {msg}")
-    q = st.text_input("Your question", key="chat_q")
-    if st.button("Ask") and q:
+        with st.chat_message("user" if role == "user" else "assistant"):
+            st.markdown(msg)
+    q = st.chat_input("Ask about this repair...")
+    if q:
         convo = list(st.session_state.chat)
         convo.append(("user", q))
-        r = api_client().responses.create(
-            model="muse-spark-1.3",
-            instructions=(
-                "You are SnapFix, a repair guide for beginners. Below is "
-                "the diagnosis you already gave for the user's photo or "
-                "video. Answer follow-up questions about THIS repair in "
-                "plain, simple words. If a step is dangerous, say so "
-                "clearly and give the safe way to do it.\n\n" + out
-            ),
-            input=[{"role": role, "content": msg} for role, msg in convo],
-        )
-        st.session_state.chat = convo + [("assistant", r.output_text)]
+
+        def as_input(role: str, msg: str) -> dict:
+            part = {"type": "input_text" if role == "user"
+                    else "output_text", "text": msg}
+            return {"role": role, "content": [part]}
+
+        try:
+            r = api_client().responses.create(
+                model="muse-spark-1.3",
+                instructions=(
+                    "You are SnapFix, a repair guide for beginners. "
+                    "Below is the diagnosis you already gave for the "
+                    "user's photo or video. Answer follow-up questions "
+                    "about THIS repair in plain, simple words. If a "
+                    "step is dangerous, say so clearly and give the "
+                    "safe way to do it.\n\n" + out
+                ),
+                input=[as_input(role, msg) for role, msg in convo],
+            )
+            st.session_state.chat = convo + [("assistant",
+                                              r.output_text)]
+        except Exception as e:
+            st.session_state.chat = convo
+            st.warning(f"SnapFix could not answer just now: {e}")
         st.rerun()
-elif st.session_state.run_details:
-    st.error("The diagnosis did not complete. Details:")
-    for line in st.session_state.run_details:
-        st.text(line)
+elif st.session_state.run_failed:
+    st.error("The diagnosis did not complete. Please try again.")
