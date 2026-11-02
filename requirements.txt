@@ -1,0 +1,7 @@
+streamlit
+opencv-python-headless
+openai
+pillow
+python-dotenv
+requests
+meta_sam_parser

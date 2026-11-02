@@ -1,0 +1,14 @@
+[project]
+name = "snapfix"
+version = "0.1.0"
+description = "SnapFix - an agentic appliance repair copilot (Meta AI Developer Hackathon, Oct 26 - Nov 4, 2026)"
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit",
+    "opencv-python-headless",
+    "openai",
+    "pillow",
+    "python-dotenv",
+    "requests",
+    "meta_sam_parser",
+]

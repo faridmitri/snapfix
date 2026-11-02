@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+upload.jpg
+upload_video.mp4
+snapfix_result.jpg
+numbered_check.jpg
+guide_step_*.jpg
