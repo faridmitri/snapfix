@@ -170,12 +170,15 @@ if st.button("Diagnose", type="primary", disabled=media is None):
     RESULT.unlink(missing_ok=True)
     for old in Path(".").glob("guide_step_*.jpg"):
         old.unlink(missing_ok=True)
-    with st.spinner("SnapFix is looking..."):
+    with st.status("SnapFix is working...", expanded=True) as status:
+        st.write("Reading your photo and diagnosing the fault...")
+        st.write("Highlighting the faulty part and verifying it...")
         result = subprocess.run(
             [sys.executable, "snapfix.py", "upload.jpg"],
             input=symptom + "\n\n\n",
             capture_output=True, text=True, timeout=600,
         )
+        status.update(label="Diagnosis complete", state="complete")
     raw = result.stdout or result.stderr
     st.session_state.last_run = clean_output(raw)
     st.session_state.run_failed = not st.session_state.last_run
@@ -327,19 +330,22 @@ if out:
                     else "output_text", "text": msg}
             return {"role": role, "content": [part]}
 
+        with st.chat_message("user"):
+            st.markdown(q)
         try:
-            r = api_client().responses.create(
-                model="muse-spark-1.3",
-                instructions=(
-                    "You are SnapFix, a repair guide for beginners. "
-                    "Below is the diagnosis you already gave for the "
-                    "user's photo or video. Answer follow-up questions "
-                    "about THIS repair in plain, simple words. If a "
-                    "step is dangerous, say so clearly and give the "
-                    "safe way to do it.\n\n" + out
-                ),
-                input=[as_input(role, msg) for role, msg in convo],
-            )
+            with st.spinner("SnapFix is thinking..."):
+                r = api_client().responses.create(
+                    model="muse-spark-1.3",
+                    instructions=(
+                        "You are SnapFix, a repair guide for beginners. "
+                        "Below is the diagnosis you already gave for the "
+                        "user's photo or video. Answer follow-up questions "
+                        "about THIS repair in plain, simple words. If a "
+                        "step is dangerous, say so clearly and give the "
+                        "safe way to do it.\n\n" + out
+                    ),
+                    input=[as_input(role, msg) for role, msg in convo],
+                )
             st.session_state.chat = convo + [("assistant",
                                               r.output_text)]
         except Exception as e:
